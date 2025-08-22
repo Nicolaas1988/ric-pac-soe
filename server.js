@@ -1,105 +1,82 @@
-// server.js
-import express from 'express'
-import http from 'http'
-import { Server } from 'socket.io'
+const express = require('express')
+const http = require('http')
+const { Server } = require('socket.io')
 
 const app = express()
 const server = http.createServer(app)
-const io = new Server(server, {
-  cors: {
-    origin: '*',
-    methods: ['GET', 'POST'],
-  },
-})
+const io = new Server(server)
 
-const PORT = process.env.PORT || 3000
+app.use(express.static(__dirname))
 
-// Initialize game state
+const BOARD_SIZE = 8
 let gameState = {
-  board: Array(8)
-    .fill(null)
-    .map(() => Array(8).fill(null)), // 8x8 grid
-  players: [], // array of player names
-  scores: {}, // player scores
-  currentPlayerIndex: 0, // who's turn
+  board: Array.from({ length: BOARD_SIZE }, () => Array(BOARD_SIZE).fill(null)),
+  players: [],
+  currentPlayerIndex: 0,
+  scores: {},
 }
 
-// Utility: reset game
-function resetGame() {
-  gameState.board = Array(8)
-    .fill(null)
-    .map(() => Array(8).fill(null))
+function checkRowWinner(row) {
+  if (!row[0]) return null
+  const first = row[0]
+  if (row.every((cell) => cell === first)) return first
+  return null
+}
+
+function updateScores() {
+  // Reset scores
   gameState.scores = {}
-  gameState.currentPlayerIndex = 0
-  gameState.players = []
-}
+  for (const player of gameState.players) {
+    gameState.scores[player] = 0
+  }
 
-// Check if a player wins a row
-function checkRows(player) {
-  const symbols = ['O', 'X', '■']
+  // Check each row for a winner
   gameState.board.forEach((row) => {
-    symbols.forEach((symbol) => {
-      let count = 0
-      row.forEach((cell) => {
-        if (cell === symbol) count++
-      })
-      if (count === 3) {
-        if (!gameState.scores[player]) gameState.scores[player] = 0
-        gameState.scores[player] += 1
-      }
-    })
+    const winnerSymbol = checkRowWinner(row)
+    if (winnerSymbol) {
+      // Find player who uses this symbol
+      const player = gameState.players.find((p) => p.symbol === winnerSymbol)
+      if (player) gameState.scores[player.name]++
+    }
   })
 }
 
-// Socket.IO handling
 io.on('connection', (socket) => {
-  console.log(`Player connected: ${socket.id}`)
+  console.log('a user connected')
 
-  // Send current game state to the new player
+  // Send current state to new user
   socket.emit('gameState', gameState)
 
-  // Player joins the game
   socket.on('joinGame', (playerName) => {
-    if (!gameState.players.includes(playerName)) {
-      gameState.players.push(playerName)
-      gameState.scores[playerName] = 0
+    if (!gameState.players.some((p) => p.name === playerName)) {
+      const symbol = ['O', '■', 'X'][gameState.players.length % 3]
+      gameState.players.push({ name: playerName, symbol })
     }
     io.emit('gameState', gameState)
   })
 
-  // Player makes a move
   socket.on('makeMove', ({ player, row, col, symbol }) => {
-    if (
-      gameState.board[row][col] === null &&
-      gameState.players[gameState.currentPlayerIndex] === player
-    ) {
+    if (gameState.board[row][col] === null) {
       gameState.board[row][col] = symbol
-
-      // Check for row wins
-      checkRows(player)
-
-      // Next player
       gameState.currentPlayerIndex =
         (gameState.currentPlayerIndex + 1) % gameState.players.length
-
+      updateScores()
       io.emit('gameState', gameState)
     }
   })
 
-  // Reset the game
   socket.on('resetGame', () => {
-    resetGame()
+    gameState.board = Array.from({ length: BOARD_SIZE }, () =>
+      Array(BOARD_SIZE).fill(null)
+    )
+    gameState.scores = {}
     io.emit('gameState', gameState)
   })
 
   socket.on('disconnect', () => {
-    console.log(`Player disconnected: ${socket.id}`)
+    console.log('user disconnected')
   })
 })
 
-// Serve static files (optional if front-end is in same project)
-app.use(express.static('public'))
-
-server.listen(PORT, () => {
-  console.log(`Server running on port ${PORT}`)
-})
+const PORT = process.env.PORT || 3000
+server.listen(PORT, () => console.log(`Server running on port ${PORT}`))
