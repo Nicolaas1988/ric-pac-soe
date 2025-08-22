@@ -24,12 +24,17 @@ const ORIGINS = (process.env.FRONTEND_ORIGINS || '')
   .filter(Boolean)
 
 // Fallback: during local dev, allow localhost if no env set
-if (ORIGINS.length === 0 && NODE_ENV !== 'production') {
-  ORIGINS.push(
-    'http://localhost:3000',
-    'http://localhost:5173',
-    'http://127.0.0.1:5173'
-  )
+if (ORIGINS.length === 0) {
+  if (NODE_ENV === 'production') {
+    // Add your Render app URL here
+    ORIGINS.push('https://ric-pac-soe.onrender.com')
+  } else {
+    ORIGINS.push(
+      'http://localhost:3000',
+      'http://localhost:5173',
+      'http://127.0.0.1:5173'
+    )
+  }
 }
 
 /* -------------------------
