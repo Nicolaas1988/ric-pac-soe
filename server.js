@@ -44,18 +44,12 @@ const app = express()
 const server = http.createServer(app)
 
 const io = new Server(server, {
+  transports: ['websocket'],
+  upgrade: false,
   cors: {
-    origin: (origin, cb) => {
-      if (!origin) return cb(null, true) // allow same-origin/non-browser
-      const ok = ORIGINS.some((o) => origin === o)
-      return ok ? cb(null, true) : cb(new Error('Not allowed by CORS'))
-    },
+    origin: '*', // Or restrict to your Netlify frontend URL
     methods: ['GET', 'POST'],
-    credentials: true,
   },
-  // Optional: tune for your host
-  pingInterval: 25000,
-  pingTimeout: 20000,
 })
 
 app.set('trust proxy', true)

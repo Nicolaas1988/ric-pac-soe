@@ -447,6 +447,7 @@
       const socket = io('https://ric-pac-soe.onrender.com', {
         transports: ['websocket'], // optional
         withCredentials: true,
+        secure: true,
       })
 
       // ====== Client state ======
