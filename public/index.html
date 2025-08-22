@@ -444,7 +444,12 @@
 
     <script src="/socket.io/socket.io.js"></script>
     <script>
-      const socket = new WebSocket('wss://ric-pac-soe.onrender.com')
+      import { io } from 'socket.io-client'
+      // e.g., Render URL:
+      const socket = io('https://ric-pac-soe.onrender.com', {
+        transports: ['websocket'], // force WS if you prefer
+        withCredentials: true,
+      })
 
       // ====== Client state ======
       let ROOM_ID = null
