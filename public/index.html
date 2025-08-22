@@ -444,7 +444,7 @@
 
     <script src="/socket.io/socket.io.js"></script>
     <script>
-      const socket = io()
+      const socket = new WebSocket('wss://ric-pac-soe.onrender.com')
 
       // ====== Client state ======
       let ROOM_ID = null
