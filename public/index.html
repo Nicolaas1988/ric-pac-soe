@@ -442,9 +442,12 @@
       </div>
     </div>
 
-    <script src="/socket.io/socket.io.js"></script>
+    <script src="https://cdn.socket.io/4.8.1/socket.io.min.js"></script>
     <script>
-      const socket = new WebSocket('wss://ric-pac-soe.onrender.com')
+      const socket = io('https://ric-pac-soe.onrender.com', {
+        transports: ['websocket'], // optional
+        withCredentials: true,
+      })
 
       // ====== Client state ======
       let ROOM_ID = null
