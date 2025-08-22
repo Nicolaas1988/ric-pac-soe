@@ -1,128 +1,852 @@
 <!DOCTYPE html>
 <html lang="en">
   <head>
-    <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Ric Pac Soe</title>
-    <script src="https://cdn.socket.io/4.7.2/socket.io.min.js"></script>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width,initial-scale=1" />
+    <title>Ric Pac Soe — Online</title>
     <style>
+      :root {
+        --bg: #0e1117;
+        --panel: #131826;
+        --border: #1b2233;
+        --muted: #98a2b3;
+        --grid: #222a3d;
+        --cell: #0e1117;
+        --blocker: #778196;
+        --p1: #4f46e5;
+        --p2: #ef4444;
+        --p3: #10b981;
+        --p4: #f59e0b;
+      }
+      * {
+        box-sizing: border-box;
+      }
       body {
-        font-family: sans-serif;
-        text-align: center;
-        background-color: #f0f0f0;
-      }
-      #board {
+        margin: 0;
+        font-family: system-ui, -apple-system, Segoe UI, Roboto, Inter, Ubuntu,
+          'Helvetica Neue', Arial;
+        color: #e6edf3;
+        background: var(--bg);
         display: grid;
-        grid-template-columns: repeat(8, 50px);
-        grid-template-rows: repeat(8, 50px);
-        gap: 5px;
-        margin: 20px auto;
+        grid-template-columns: 360px 1fr 320px;
+        gap: 16px;
+        min-height: 100vh;
+        grid-template-areas:
+          'header header header'
+          'sidebar board right';
       }
-      .cell {
-        width: 50px;
-        height: 50px;
-        background-color: white;
-        border: 1px solid #333;
+      header {
+        grid-area: header;
+        background: var(--panel);
+        border-bottom: 1px solid var(--border);
+        padding: 12px 16px;
         display: flex;
         align-items: center;
-        justify-content: center;
-        font-size: 24px;
-        cursor: pointer;
-        user-select: none;
+        gap: 12px;
+        flex-wrap: wrap;
       }
-      #controls {
-        margin: 10px;
+      h1 {
+        margin: 0;
+        font-size: 18px;
+        letter-spacing: 0.3px;
       }
-      #scores {
-        margin: 10px;
+      .row {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        flex-wrap: wrap;
+      }
+      .grow {
+        flex: 1;
+      }
+      input[type='text'],
+      input[type='number'] {
+        padding: 8px;
+        border-radius: 8px;
+        border: 1px solid var(--border);
+        background: #0c1020;
+        color: #fff;
+      }
+      input[type='text'] {
+        width: 160px;
       }
       button {
-        padding: 8px 12px;
-        margin: 5px;
+        padding: 10px 12px;
+        border-radius: 10px;
+        border: 1px solid var(--border);
+        background: #111830;
+        color: #fff;
         cursor: pointer;
+      }
+      button:hover {
+        filter: brightness(1.12);
+      }
+      button:active {
+        transform: translateY(1px);
+      }
+      .btn-accent {
+        border-color: #184a3b;
+        background: #0d1c18;
+      }
+      .btn-danger {
+        border-color: #4a1a1a;
+        background: #1a0f10;
+      }
+      .pill {
+        padding: 2px 8px;
+        border: 1px solid var(--border);
+        border-radius: 999px;
+        font-size: 12px;
+        background: #0c1020;
+      }
+      .sidebar {
+        grid-area: sidebar;
+        padding: 16px;
+        background: var(--panel);
+        border-right: 1px solid var(--border);
+        display: flex;
+        flex-direction: column;
+        gap: 16px;
+      }
+      .card {
+        background: #0f1422;
+        border: 1px solid var(--border);
+        border-radius: 12px;
+        padding: 12px;
+      }
+      .status {
+        font-size: 12px;
+        color: var(--muted);
+      }
+      .controls-row {
+        display: flex;
+        gap: 8px;
+        margin-top: 10px;
+        flex-wrap: wrap;
+      }
+      .sym-btn {
+        min-width: 46px;
+        padding: 8px 10px;
+        border-radius: 8px;
+        border: 1px solid var(--border);
+        background: #0f1422;
+        color: #fff;
+        cursor: pointer;
+      }
+      .board-wrap {
+        grid-area: board;
+        display: flex;
+        justify-content: center;
+        padding: 16px;
+      }
+      .board {
+        --size: 8;
+        --cell: 64px;
+        display: grid;
+        grid-template-columns: repeat(var(--size), var(--cell));
+        grid-template-rows: repeat(var(--size), var(--cell));
+        gap: 2px;
+        background: var(--grid);
+        padding: 2px;
+        border-radius: 12px;
+        box-shadow: 0 10px 30px rgba(0, 0, 0, 0.35);
+      }
+      .cell {
+        width: var(--cell);
+        height: var(--cell);
+        background: var(--cell);
+        border: 1px solid #000;
+        border-radius: 8px;
+        display: grid;
+        place-items: center;
+        position: relative;
+        user-select: none;
+        cursor: pointer;
+      }
+      .cell[data-blocker='true'] {
+        background: var(--blocker);
+      }
+      .glyph {
+        font-size: 28px;
+        font-weight: 800;
+        line-height: 1;
+      }
+      .dot {
+        width: 10px;
+        height: 10px;
+        border-radius: 999px;
+        display: inline-block;
+      }
+      .selected {
+        outline: 3px solid rgba(0, 170, 255, 0.22);
+        outline-offset: -3px;
+      }
+      table {
+        width: 100%;
+        border-collapse: collapse;
+      }
+      th,
+      td {
+        padding: 6px 8px;
+        border-bottom: 1px solid var(--border);
+        font-size: 13px;
+      }
+      th {
+        text-align: left;
+        color: #aab6c5;
+      }
+      .legend {
+        font-size: 12px;
+        color: var(--muted);
+        display: flex;
+        gap: 12px;
+        align-items: center;
+        margin-left: auto;
+      }
+      /* right panel */
+      .right {
+        grid-area: right;
+        padding: 16px;
+        background: var(--panel);
+        border-left: 1px solid var(--border);
+        display: flex;
+        flex-direction: column;
+        gap: 16px;
+      }
+      .list {
+        max-height: 260px;
+        overflow: auto;
+        border: 1px solid var(--border);
+        border-radius: 10px;
+      }
+      .list-item {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        padding: 8px 10px;
+        border-bottom: 1px solid var(--border);
+      }
+      .list-item:last-child {
+        border-bottom: none;
+      }
+      .linklike {
+        cursor: pointer;
+        text-decoration: underline;
+      }
+      /* ghost cursor */
+      #cursorGhost {
+        position: fixed;
+        pointer-events: none;
+        transform: translate(-50%, -50%);
+        font-size: 28px;
+        z-index: 9999;
+        display: none;
+      }
+      /* modal */
+      #modalOverlay {
+        position: fixed;
+        inset: 0;
+        background: rgba(0, 0, 0, 0.6);
+        display: none;
+        align-items: center;
+        justify-content: center;
+        z-index: 10000;
+      }
+      #modal {
+        background: #0f1422;
+        color: #e6edf3;
+        padding: 24px;
+        border-radius: 12px;
+        border: 1px solid var(--border);
+        width: 90%;
+        max-width: 420px;
+        text-align: center;
+      }
+      #chatBox {
+        height: 220px;
+        overflow: auto;
+        border: 1px solid var(--border);
+        border-radius: 10px;
+        padding: 8px;
+        background: #0c1020;
+      }
+      .chat-msg {
+        font-size: 13px;
+        margin: 4px 0;
+      }
+      .chat-name {
+        color: #9ac7ff;
+      }
+      .muted {
+        color: #94a3b8;
       }
     </style>
   </head>
   <body>
-    <h1>Ric Pac Soe</h1>
-    <div id="controls">
-      <input type="text" id="playerName" placeholder="Your name" />
-      <select id="symbolSelect">
-        <option value="O">O (Rock)</option>
-        <option value="■">■ (Paper)</option>
-        <option value="X">X (Scissors)</option>
-      </select>
-      <button id="joinBtn">Join Game</button>
-      <button id="resetBtn">Reset Game</button>
-    </div>
-    <div id="board"></div>
-    <div id="scores">
-      <h3>Scores:</h3>
-      <ul id="scoreList"></ul>
+    <header>
+      <h1>Ric Pac Soe — Online</h1>
+      <div class="row">
+        <input id="roomIdInput" type="text" placeholder="Room ID" />
+        <input id="nameInput" type="text" placeholder="Your name" />
+        <label class="row"
+          ><input id="spectatorChk" type="checkbox" /> Join as spectator</label
+        >
+        <button id="joinBtn" class="btn-accent">Join Room</button>
+        <button id="createBtn">Create Room</button>
+        <button id="copyInviteBtn" title="Copy invite link" disabled>
+          Copy Invite
+        </button>
+      </div>
+      <div class="legend">
+        <span><b>Symbols:</b></span>
+        <span>◯ Rock</span>
+        <span>■ Paper</span>
+        <span>✕ Scissors</span>
+        <span>▦ Blocker</span>
+      </div>
+    </header>
+
+    <aside class="sidebar">
+      <div class="card">
+        <div class="row" style="justify-content: space-between; gap: 14px">
+          <div>
+            <label>Players in room</label><br />
+            <span id="playersCount" class="pill">—</span>
+          </div>
+          <div>
+            <label>Tiles / Symbol</label><br />
+            <input
+              id="tilesPerSymbolInput"
+              type="number"
+              min="1"
+              max="99"
+              value="10"
+            />
+          </div>
+        </div>
+        <div
+          class="row"
+          style="justify-content: space-between; gap: 14px; margin-top: 10px"
+        >
+          <div>
+            <label>Amount of blockers</label><br />
+            <input
+              id="blockersInput"
+              type="number"
+              min="0"
+              max="64"
+              value="8"
+            />
+          </div>
+          <div>
+            <label>Points to win</label><br />
+            <input
+              id="pointsToWinInput"
+              type="number"
+              min="1"
+              max="999"
+              value="7"
+            />
+          </div>
+        </div>
+        <div class="row" style="margin-top: 12px">
+          <button id="newGameBtn" class="btn-accent">Start / Reset Game</button>
+        </div>
+        <div id="statusText" class="status" style="margin-top: 8px">
+          Join or create a room.
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="row" style="justify-content: space-between">
+          <div>
+            <div class="pill" id="currentPlayerName">—</div>
+          </div>
+          <div>
+            <div class="pill" id="lastSymbol">—</div>
+          </div>
+        </div>
+        <div style="margin-top: 10px">
+          <div class="status">
+            Select a symbol, then click a cell to place it. To move a blocker:
+            click a blocker, then an adjacent empty cell (one step).
+          </div>
+          <div class="controls-row" style="margin-top: 8px">
+            <button class="sym-btn" data-sym="R">◯ Rock</button>
+            <button class="sym-btn" data-sym="P">■ Paper</button>
+            <button class="sym-btn" data-sym="S">✕ Scissors</button>
+          </div>
+        </div>
+      </div>
+
+      <div class="card">
+        <div style="font-weight: 700; margin-bottom: 6px">Scoreboard</div>
+        <table id="scoreTable">
+          <thead>
+            <tr>
+              <th>Player</th>
+              <th>Score</th>
+              <th>R</th>
+              <th>P</th>
+              <th>S</th>
+            </tr>
+          </thead>
+          <tbody></tbody>
+        </table>
+      </div>
+    </aside>
+
+    <main class="board-wrap">
+      <div id="board" class="board"></div>
+    </main>
+
+    <aside class="right">
+      <div class="card">
+        <div class="row" style="justify-content: space-between">
+          <div style="font-weight: 700">Lobby</div>
+          <button id="refreshLobbyBtn">Refresh</button>
+        </div>
+        <div id="lobbyList" class="list" aria-live="polite"></div>
+        <div class="status" style="margin-top: 6px">
+          Click a room to fill its ID, then Join.
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="row" style="justify-content: space-between">
+          <div style="font-weight: 700">Chat</div>
+          <span class="muted" id="roomLabel">Room: —</span>
+        </div>
+        <div id="chatBox" class="muted"></div>
+        <div class="row" style="margin-top: 8px">
+          <input
+            id="chatInput"
+            type="text"
+            placeholder="Say something…"
+            class="grow"
+          />
+          <button id="chatSend">Send</button>
+        </div>
+      </div>
+    </aside>
+
+    <div id="cursorGhost">◯</div>
+
+    <div id="modalOverlay" role="dialog" aria-modal="true">
+      <div id="modal">
+        <div
+          id="modalMessage"
+          style="font-size: 18px; margin-bottom: 12px"
+        ></div>
+        <button id="modalClose">Close</button>
+      </div>
     </div>
 
+    <script src="/socket.io/socket.io.js"></script>
     <script>
       const socket = io()
 
-      const boardEl = document.getElementById('board')
-      const scoreListEl = document.getElementById('scoreList')
-      const joinBtn = document.getElementById('joinBtn')
-      const resetBtn = document.getElementById('resetBtn')
-      const playerNameInput = document.getElementById('playerName')
-      const symbolSelect = document.getElementById('symbolSelect')
+      // ====== Client state ======
+      let ROOM_ID = null
+      let STATE = null // public state from server
+      let ME = { role: null, index: null } // assigned by server on join
+      const SYMBOLS = { R: '◯', P: '■', S: '✕' }
+      const COLORS = ['var(--p1)', 'var(--p2)', 'var(--p3)', 'var(--p4)']
 
-      let playerName = ''
-      let symbol = 'O'
+      let selectedSymbol = null
+      let pendingBlockerFrom = null
+      const cursorGhost = document.getElementById('cursorGhost')
 
-      joinBtn.addEventListener('click', () => {
-        playerName = playerNameInput.value.trim()
-        symbol = symbolSelect.value
-        if (!playerName) return alert('Enter your name!')
-        socket.emit('joinGame', playerName)
-      })
-
-      resetBtn.addEventListener('click', () => {
-        socket.emit('resetGame')
-      })
-
-      function renderBoard(board, currentPlayer) {
-        boardEl.innerHTML = ''
-        board.forEach((row, r) => {
-          row.forEach((cell, c) => {
-            const cellEl = document.createElement('div')
-            cellEl.className = 'cell'
-            cellEl.textContent = cell || ''
-            cellEl.addEventListener('click', () => {
-              if (!playerName) return alert('Join the game first!')
-              if (currentPlayer === playerName && !cell) {
-                socket.emit('makeMove', {
-                  player: playerName,
-                  row: r,
-                  col: c,
-                  symbol,
-                })
-              }
-            })
-            boardEl.appendChild(cellEl)
-          })
-        })
+      // ====== Helpers ======
+      function setStatus(msg) {
+        document.getElementById('statusText').textContent = msg
+      }
+      function playerColor(i) {
+        return COLORS[i % COLORS.length]
+      }
+      function playerLabel(i) {
+        return `P${i + 1}`
+      }
+      function inBounds(r, c) {
+        return r >= 0 && r < 8 && c >= 0 && c < 8
+      }
+      function clampInt(v, mn, mx) {
+        v = parseInt(v || 0, 10)
+        if (isNaN(v)) v = mn
+        return Math.min(mx, Math.max(mn, v))
       }
 
-      function renderScores(scores) {
-        scoreListEl.innerHTML = ''
-        for (const [player, score] of Object.entries(scores)) {
-          const li = document.createElement('li')
-          li.textContent = `${player}: ${score}`
-          scoreListEl.appendChild(li)
+      // ====== Render ======
+      function renderAll() {
+        if (!STATE) return
+        renderBoard()
+        renderSidebar()
+        renderChat()
+        if (STATE.gameOver && STATE.message) showModal(STATE.message)
+      }
+
+      function renderBoard() {
+        const board = document.getElementById('board')
+        board.innerHTML = ''
+        for (let r = 0; r < 8; r++) {
+          for (let c = 0; c < 8; c++) {
+            const cell = document.createElement('div')
+            cell.className = 'cell'
+            cell.dataset.r = r
+            cell.dataset.c = c
+            const v = STATE.board[r][c]
+            if (v && v.type === 'BLOCKER') {
+              cell.dataset.blocker = 'true'
+              if (
+                pendingBlockerFrom &&
+                pendingBlockerFrom.r === r &&
+                pendingBlockerFrom.c === c
+              ) {
+                cell.classList.add('selected')
+              }
+            } else if (v) {
+              const span = document.createElement('span')
+              span.className = 'glyph'
+              span.textContent = SYMBOLS[v.sym]
+              span.style.color = playerColor(v.player)
+              cell.appendChild(span)
+            }
+            cell.addEventListener('click', onCellClick)
+            board.appendChild(cell)
+          }
         }
       }
 
-      socket.on('gameState', (gameState) => {
-        const currentPlayerName =
-          gameState.players[gameState.currentPlayerIndex]?.name
-        renderBoard(gameState.board, currentPlayerName)
-        renderScores(gameState.scores)
+      function renderSidebar() {
+        const pc = document.getElementById('playersCount')
+        pc.textContent = STATE.players.length
+
+        // turn info
+        const idx = STATE.turn
+        const cp = document.getElementById('currentPlayerName')
+        const name = STATE.players[idx]?.name || playerLabel(idx)
+        cp.textContent = `Turn: ${playerLabel(idx)} — ${name}`
+        cp.style.borderColor = playerColor(idx)
+        cp.style.color = playerColor(idx)
+
+        const last = STATE.lastPlayed[idx] || '—'
+        document.getElementById('lastSymbol').textContent =
+          last === '—' ? '—' : SYMBOLS[last]
+
+        // scoreboard
+        const tbody = document.querySelector('#scoreTable tbody')
+        tbody.innerHTML = ''
+        for (let i = 0; i < STATE.players.length; i++) {
+          const tr = document.createElement('tr')
+          tr.innerHTML = `
+        <td><span class="dot" style="background:${playerColor(i)}"></span> ${
+            STATE.players[i].name || playerLabel(i)
+          }</td>
+        <td>${STATE.scores[i] ?? 0}</td>
+        <td>${STATE.stock[i]?.R ?? 0}</td>
+        <td>${STATE.stock[i]?.P ?? 0}</td>
+        <td>${STATE.stock[i]?.S ?? 0}</td>
+      `
+          tbody.appendChild(tr)
+        }
+
+        // controls
+        const myTurn = ME.role === 'player' && STATE.turn === ME.index
+        document.querySelectorAll('.sym-btn').forEach((btn) => {
+          const sym = btn.dataset.sym
+          const out =
+            ME.index == null ? true : (STATE.stock[ME.index]?.[sym] ?? 0) <= 0
+          btn.disabled = !myTurn || out || STATE.gameOver || !STATE.started
+          btn.style.opacity = btn.disabled ? 0.5 : 1
+        })
+
+        // Invite link
+        const copyBtn = document.getElementById('copyInviteBtn')
+        copyBtn.disabled = !ROOM_ID
+        document.getElementById('roomLabel').textContent = `Room: ${
+          ROOM_ID || '—'
+        }`
+      }
+
+      // ====== Interaction ======
+      // symbol selection + ghost cursor
+      document.querySelectorAll('.sym-btn').forEach((btn) => {
+        btn.addEventListener('click', () => {
+          if (
+            !STATE ||
+            STATE.gameOver ||
+            STATE.turn !== ME.index ||
+            ME.role !== 'player'
+          )
+            return
+          const sym = btn.dataset.sym
+          if (selectedSymbol === sym) {
+            selectedSymbol = null
+            hideCursorGhost()
+            setStatus('Symbol selection cancelled.')
+            return
+          }
+          selectedSymbol = sym
+          pendingBlockerFrom = null
+          showCursorGhost(sym)
+          setStatus(`Selected ${SYMBOLS[sym]} — click an empty cell to place.`)
+        })
       })
+
+      function onCellClick(e) {
+        if (!STATE || STATE.gameOver) return
+        const r = +e.currentTarget.dataset.r
+        const c = +e.currentTarget.dataset.c
+        const v = STATE.board[r][c]
+
+        // Only players whose turn it is can act
+        if (!(ME.role === 'player' && STATE.turn === ME.index)) return
+
+        // placing
+        if (selectedSymbol) {
+          if (v !== null) {
+            setStatus('Cell occupied.')
+            return
+          }
+          socket.emit('placePiece', {
+            roomId: ROOM_ID,
+            r,
+            c,
+            sym: selectedSymbol,
+          })
+          selectedSymbol = null
+          hideCursorGhost()
+          return
+        }
+
+        // blocker move (one step)
+        if (v && v.type === 'BLOCKER') {
+          pendingBlockerFrom = { r, c }
+          setStatus(
+            'Blocker selected — click an adjacent empty cell (one step).'
+          )
+          renderBoard()
+          return
+        }
+        if (pendingBlockerFrom) {
+          if (v !== null) {
+            setStatus('Destination not empty.')
+            return
+          }
+          const from = pendingBlockerFrom
+          const dr = Math.abs(from.r - r),
+            dc = Math.abs(from.c - c)
+          if ((dr === 0 && dc === 0) || dr > 1 || dc > 1) {
+            setStatus('One-step move only.')
+            return
+          }
+          socket.emit('moveBlocker', { roomId: ROOM_ID, from, to: { r, c } })
+          pendingBlockerFrom = null
+          return
+        }
+      }
+
+      // Cursor ghost
+      function showCursorGhost(sym) {
+        cursorGhost.style.display = 'block'
+        cursorGhost.textContent = SYMBOLS[sym]
+        cursorGhost.style.color = 'white'
+      }
+      function hideCursorGhost() {
+        cursorGhost.style.display = 'none'
+      }
+      document.addEventListener('mousemove', (e) => {
+        if (cursorGhost.style.display === 'block') {
+          cursorGhost.style.left = e.clientX + 'px'
+          cursorGhost.style.top = e.clientY + 'px'
+        }
+      })
+
+      // Modal
+      const modalOverlay = document.getElementById('modalOverlay')
+      const modalMessage = document.getElementById('modalMessage')
+      document
+        .getElementById('modalClose')
+        .addEventListener('click', () => (modalOverlay.style.display = 'none'))
+      function showModal(msg) {
+        modalMessage.textContent = msg
+        modalOverlay.style.display = 'flex'
+      }
+
+      // ===== Lobby =====
+      const lobbyListEl = document.getElementById('lobbyList')
+      function renderLobby(list) {
+        lobbyListEl.innerHTML = ''
+        if (!Array.isArray(list) || list.length === 0) {
+          lobbyListEl.innerHTML =
+            '<div class="list-item"><span class="muted">No rooms yet.</span></div>'
+          return
+        }
+        for (const r of list) {
+          const row = document.createElement('div')
+          row.className = 'list-item'
+          const left = document.createElement('div')
+          left.innerHTML = `<b>${r.id}</b> <span class="muted">• ${
+            r.players
+          }P / ${r.spectators}S ${r.started ? '• live' : ''}</span>`
+          const join = document.createElement('button')
+          join.textContent = 'Pick'
+          join.addEventListener('click', () => {
+            document.getElementById('roomIdInput').value = r.id
+          })
+          row.append(left, join)
+          lobbyListEl.appendChild(row)
+        }
+      }
+      document
+        .getElementById('refreshLobbyBtn')
+        .addEventListener('click', () => socket.emit('requestLobby'))
+      socket.on('lobby', renderLobby)
+
+      // ===== Join/Create/Invite =====
+      document.getElementById('createBtn').addEventListener('click', () => {
+        socket.emit('createRoom')
+      })
+      socket.on('roomCreated', ({ id }) => {
+        document.getElementById('roomIdInput').value = id
+        setStatus(`Room ${id} created. Share the invite link and press Join.`)
+      })
+
+      document.getElementById('joinBtn').addEventListener('click', () => {
+        const roomId = document.getElementById('roomIdInput').value.trim()
+        const name = document.getElementById('nameInput').value.trim()
+        const asSpectator = document.getElementById('spectatorChk').checked
+        if (!roomId) {
+          alert('Enter a Room ID')
+          return
+        }
+        ROOM_ID = roomId
+        history.replaceState({}, '', `?room=${encodeURIComponent(ROOM_ID)}`)
+        document.getElementById('copyInviteBtn').disabled = false
+        socket.emit('joinRoom', { roomId, name, asSpectator })
+        setStatus(
+          `Joined room ${roomId}. ${
+            asSpectator ? 'Spectating.' : 'Waiting for game or your turn…'
+          }`
+        )
+        socket.emit('requestState', { roomId })
+      })
+
+      document
+        .getElementById('copyInviteBtn')
+        .addEventListener('click', async () => {
+          if (!ROOM_ID) return
+          const link = `${location.origin}${
+            location.pathname
+          }?room=${encodeURIComponent(ROOM_ID)}`
+          try {
+            await navigator.clipboard.writeText(link)
+            setStatus('Invite link copied to clipboard!')
+          } catch {
+            setStatus('Could not copy link.')
+          }
+        })
+
+      document.getElementById('newGameBtn').addEventListener('click', () => {
+        if (!ROOM_ID) {
+          alert('Join a room first')
+          return
+        }
+        const tiles = clampInt(
+          document.getElementById('tilesPerSymbolInput').value,
+          1,
+          99
+        )
+        const blockers = clampInt(
+          document.getElementById('blockersInput').value,
+          0,
+          64
+        )
+        const pointsToWin = clampInt(
+          document.getElementById('pointsToWinInput').value,
+          1,
+          999
+        )
+        socket.emit('newGame', {
+          roomId: ROOM_ID,
+          tilesPerSymbol: tiles,
+          blockers,
+          pointsToWin,
+        })
+      })
+
+      // ===== Chat =====
+      function renderChat() {
+        const box = document.getElementById('chatBox')
+        box.innerHTML = ''
+        if (!STATE || !STATE.chat) return
+        for (const m of STATE.chat) {
+          const div = document.createElement('div')
+          const time = new Date(m.time).toLocaleTimeString()
+          div.className = 'chat-msg'
+          div.innerHTML = `<span class="chat-name">${escapeHtml(
+            m.name
+          )}</span> <span class="muted">[${time}]</span>: ${escapeHtml(m.text)}`
+          box.appendChild(div)
+        }
+        box.scrollTop = box.scrollHeight
+      }
+      function escapeHtml(s) {
+        return (s || '').replace(
+          /[&<>"']/g,
+          (c) =>
+            ({
+              '&': '&amp;',
+              '<': '&lt;',
+              '>': '&gt;',
+              '"': '&quot;',
+              "'": '&#39;',
+            }[c])
+        )
+      }
+      document.getElementById('chatSend').addEventListener('click', sendChat)
+      document.getElementById('chatInput').addEventListener('keydown', (e) => {
+        if (e.key === 'Enter') sendChat()
+      })
+      function sendChat() {
+        if (!ROOM_ID) return
+        const name = document.getElementById('nameInput').value || 'Anon'
+        const text = document.getElementById('chatInput').value.trim()
+        if (!text) return
+        socket.emit('chat', { roomId: ROOM_ID, name, text })
+        document.getElementById('chatInput').value = ''
+      }
+      socket.on('chat', (msg) => {
+        if (!STATE) return
+        STATE.chat = (STATE.chat || []).concat([msg])
+        renderChat()
+      })
+
+      // ===== Sockets =====
+      socket.on('you', ({ role, index, roomId }) => {
+        ME.role = role
+        ME.index = index
+        ROOM_ID = roomId
+        document.getElementById('copyInviteBtn').disabled = !ROOM_ID
+        document.getElementById('roomLabel').textContent = `Room: ${ROOM_ID}`
+      })
+
+      socket.on('state', (s) => {
+        STATE = s
+        renderAll()
+        if (s.message) setStatus(s.message)
+      })
+
+      socket.on('lobby', (list) => renderLobby(list))
+
+      socket.emit('requestLobby') // initial
+
+      // Boot: prefill room from URL
+      const urlParams = new URLSearchParams(window.location.search)
+      const autoRoom = urlParams.get('room')
+      if (autoRoom) {
+        document.getElementById('roomIdInput').value = autoRoom
+      }
     </script>
   </body>
 </html>
