@@ -27,7 +27,7 @@ const ORIGINS = (process.env.FRONTEND_ORIGINS || '')
 if (ORIGINS.length === 0) {
   if (NODE_ENV === 'production') {
     // Add your Render app URL here
-    ORIGINS.push('https://ric-pac-soe.onrender.com')
+    ORIGINS.push('https://ric-pac-soe.onrender.com', 'https://ric-pac-soe.vercel.app')
   } else {
     ORIGINS.push(
       'http://localhost:3000',
@@ -47,7 +47,7 @@ const io = new Server(server, {
   transports: ['websocket'],
   upgrade: false,
   cors: {
-    origin: '*', // Or restrict to your Netlify frontend URL
+    origin: '*', // (optionally restrict to your prod frontend)
     methods: ['GET', 'POST'],
   },
 })
@@ -133,10 +133,11 @@ function evaluateWinners(scores) {
 -------------------------- */
 
 // Remove adjacent enemy pieces that are beaten by the placed symbol.
-// Returns {removed, highlights[]} where highlights are arrays of {r,c}.
-function resolveEliminationsFrom(board, r, c) {
+// Returns {removed, highlights[]} where highlights are [{cells:[{r,c}], by:<playerIdx>}]
+function resolveEliminationsFrom(board, r, c, byPlayerIdx) {
   const placed = board[r][c]
-  if (!placed || placed.type === 'BLOCKER') return { removed: 0, highlights: [] }
+  if (!placed || placed.type === 'BLOCKER')
+    return { removed: 0, highlights: [] }
 
   let removed = 0
   const highlights = []
@@ -148,10 +149,21 @@ function resolveEliminationsFrom(board, r, c) {
     [1, -1],
   ]
 
-  // For elimination we look only immediately adjacent at the ends of the same-owner line
+  const tryEliminate = (rr, cc) => {
+    if (!inBounds(rr, cc)) return 0
+    const v = board[rr][cc]
+    if (!v || v.type === 'BLOCKER') return 0
+    if (v.player === placed.player) return 0
+    if (WEAK_TO[v.sym] === placed.sym) {
+      board[rr][cc] = null
+      highlights.push({ cells: [{ r: rr, c: cc }], by: byPlayerIdx })
+      return 1
+    }
+    return 0
+  }
+
   for (const [dr, dc] of deltas) {
     const line = [{ r, c }]
-
     // backward
     let br = r - dr,
       bc = c - dc
@@ -169,21 +181,7 @@ function resolveEliminationsFrom(board, r, c) {
       fc += dc
     }
 
-    // try to eliminate just outside the contiguous segment that includes (r,c)
-    const tryEliminate = (rr, cc) => {
-      if (!inBounds(rr, cc)) return 0
-      const v = board[rr][cc]
-      if (!v || v.type === 'BLOCKER') return 0
-      if (v.player === placed.player) return 0
-      if (WEAK_TO[v.sym] === placed.sym) {
-        board[rr][cc] = null
-        highlights.push([{ r: rr, c: cc }]) // single-cell elimination flash
-        return 1
-      }
-      return 0
-    }
-
-    // find the pair that includes the placed tile
+    // find the pair that includes the placed tile, then try eliminations just outside
     for (let i = 0; i < line.length - 1; i++) {
       const a = line[i],
         b = line[i + 1]
@@ -198,8 +196,8 @@ function resolveEliminationsFrom(board, r, c) {
 }
 
 // +1 to current player for any 3+ contiguous of same symbol/same owner formed.
-// Returns {points, highlights[]} with one highlight triple per direction (max 4).
-function scoreThreeInRow(board, r, c) {
+// Returns {points, highlights[]} with entries {cells:[...], by:<playerIdx>}
+function scoreThreeInRow(board, r, c, byPlayerIdx) {
   const v = board[r][c]
   if (!v || v.type === 'BLOCKER') return { points: 0, highlights: [] }
   const { player, sym } = v
@@ -215,7 +213,6 @@ function scoreThreeInRow(board, r, c) {
   const highlights = []
 
   for (const [dr, dc] of deltas) {
-    // collect contiguous segment including (r,c)
     const seg = [{ r, c }]
     let br = r - dr,
       bc = c - dc
@@ -239,29 +236,25 @@ function scoreThreeInRow(board, r, c) {
     }
 
     if (seg.length >= 3) {
-      // award 1 point for this direction, highlight a centered triple (or first triple if long)
       points += 1
-      // choose a triple window that includes the placed cell
-      // find index of placed cell in seg
       const idx = seg.findIndex((p) => p.r === r && p.c === c)
-      let start = Math.max(0, Math.min(idx - 1, seg.length - 3))
+      const start = Math.max(0, Math.min(idx - 1, seg.length - 3))
       const triple = [seg[start], seg[start + 1], seg[start + 2]]
-      highlights.push(triple)
+      highlights.push({ cells: triple, by: byPlayerIdx })
     }
   }
 
   return { points, highlights }
 }
 
-// Misplacement: if placement creates a contiguous length-3 window that includes (r,c)
-// with exactly two tiles owned by the SAME opponent, both being the stronger symbol
-// against the placed symbol, then that opponent gains +1 (max 1 per direction).
-// Mixed ownership of those two tiles => no score.
+// Misplacement: see original description.
+// Returns {awarded:[{player,points}], highlights:[{cells:[...], by:<playerIdxAwarded>}]}
 function scoreMisplacement(board, r, c) {
   const placed = board[r][c]
-  if (!placed || placed.type === 'BLOCKER') return { awarded: [], highlights: [] }
+  if (!placed || placed.type === 'BLOCKER')
+    return { awarded: [], highlights: [] }
   const { player: pPlayer, sym: pSym } = placed
-  const opponentStrongSym = WEAK_TO[pSym] // symbol that beats placed
+  const opponentStrongSym = WEAK_TO[pSym]
 
   const deltas = [
     [0, 1],
@@ -270,15 +263,10 @@ function scoreMisplacement(board, r, c) {
     [1, -1],
   ]
 
-  const awarded = [] // {player, points}
+  const awarded = []
   const highlights = []
 
   for (const [dr, dc] of deltas) {
-    // Build a line of exactly 3 contiguous cells centered on placed OR with placed at an end
-    // We’ll examine three windows along the axis that include (r,c):
-    // window A: (r-2*dr,c-2*dc) .. (r-dr,c-dc) .. (r,c)
-    // window B: (r-dr,c-dc) .. (r,c) .. (r+dr,c+dc)
-    // window C: (r,c) .. (r+dr,c+dc) .. (r+2*dr,c+2*dc)
     const windows = [
       [
         { r: r - 2 * dr, c: c - 2 * dc },
@@ -301,7 +289,6 @@ function scoreMisplacement(board, r, c) {
 
     for (const win of windows) {
       if (directionAwarded) break
-      // all in bounds and occupied by pieces (no blockers/empty)
       const tiles = []
       let ok = true
       for (const pos of win) {
@@ -317,12 +304,8 @@ function scoreMisplacement(board, r, c) {
         tiles.push({ ...pos, ...t })
       }
       if (!ok) continue
-
-      // must include the placed position
       if (!tiles.some((t) => t.r === r && t.c === c)) continue
 
-      // placed tile must be the weaker one in this triple
-      // the other two must be the stronger symbol, owned by the SAME opponent
       const others = tiles.filter((t) => !(t.r === r && t.c === c))
       if (others.length !== 2) continue
 
@@ -334,11 +317,13 @@ function scoreMisplacement(board, r, c) {
         bothStronger && others[0].player === others[1].player
 
       if (bothStronger && sameOpponentOwner) {
-        // Mixed ownership is excluded by sameOpponentOwner check.
         const opp = others[0].player
         awarded.push({ player: opp, points: 1 })
-        highlights.push(win.map((w) => ({ r: w.r, c: w.c })))
-        directionAwarded = true // only 1 per direction
+        highlights.push({
+          cells: win.map((w) => ({ r: w.r, c: w.c })),
+          by: opp,
+        })
+        directionAwarded = true
       }
     }
   }
@@ -368,7 +353,7 @@ function ensureRoom(roomId) {
       started: false,
       updatedAt: Date.now(),
       chat: [], // { name, text, time }
-      highlights: [], // array of [{r,c}] groups to flash
+      highlights: [], // array of {cells:[{r,c}], by:<playerIdx>} to flash ONCE
     })
   }
   return rooms.get(roomId)
@@ -411,6 +396,12 @@ function lobbySummary() {
   return list
 }
 
+function emitRoomStateOnce(room) {
+  // Emit state that includes ephemeral highlights, then clear them immediately
+  io.to(room.id).emit('state', publicState(room))
+  room.highlights = []
+}
+
 /* -------------------------
    Socket.IO
 -------------------------- */
@@ -433,7 +424,10 @@ io.on('connection', (socket) => {
     socket.join(roomId)
     joinedRoomId = roomId
 
-    if (!asSpectator && room.players.length < 4) {
+    // Once a game is generated/started, only spectators can join
+    const forceSpectator = room.started === true
+
+    if (!forceSpectator && !asSpectator && room.players.length < 4) {
       const myIndex = room.players.length
       room.players.push({
         socketId: socket.id,
@@ -457,7 +451,7 @@ io.on('connection', (socket) => {
     }
 
     room.updatedAt = Date.now()
-    io.to(roomId).emit('state', publicState(room))
+    emitRoomStateOnce(room)
     io.emit('lobby', lobbySummary())
   })
 
@@ -482,15 +476,20 @@ io.on('connection', (socket) => {
       // shrink scores/stock
       room.scores.splice(pIdx, 1)
       room.stock.splice(pIdx, 1)
-      // reassign player indices implicitly by order
-      // (existing placed pieces keep their numeric player index; optional: remap board - skipping to keep it simple)
+    }
+
+    // If all players have left, dismantle the room (regardless of spectators)
+    if (room.players.length === 0) {
+      rooms.delete(roomId)
+      io.emit('lobby', lobbySummary())
+      return
     }
 
     room.started = false
     room.gameOver = false
     room.message = 'You left the room.'
     room.updatedAt = Date.now()
-    io.to(roomId).emit('state', publicState(room))
+    emitRoomStateOnce(room)
     io.emit('lobby', lobbySummary())
     if (joinedRoomId === roomId) joinedRoomId = null
   })
@@ -535,7 +534,7 @@ io.on('connection', (socket) => {
       placeRandomBlockers(room.board, room.settings.blockers)
 
     room.updatedAt = Date.now()
-    io.to(roomId).emit('state', publicState(room))
+    emitRoomStateOnce(room)
     io.emit('lobby', lobbySummary())
   })
 
@@ -565,15 +564,15 @@ io.on('connection', (socket) => {
     }
     room.highlights.push(...mis.highlights)
 
-    // eliminations -> current player score
-    const elim = resolveEliminationsFrom(room.board, r, c)
+    // eliminations -> current player score, flash in current player's color
+    const elim = resolveEliminationsFrom(room.board, r, c, playerIdx)
     if (elim.removed > 0) {
       room.scores[playerIdx] += elim.removed
       room.highlights.push(...elim.highlights)
     }
 
     // 3-in-a-row bonus for current player
-    const tri = scoreThreeInRow(room.board, r, c)
+    const tri = scoreThreeInRow(room.board, r, c, playerIdx)
     if (tri.points > 0) {
       room.scores[playerIdx] += tri.points
       room.highlights.push(...tri.highlights)
@@ -585,7 +584,7 @@ io.on('connection', (socket) => {
       const name = room.players[playerIdx].name || `P${playerIdx + 1}`
       room.message = `${name} wins by reaching ${room.settings.pointsToWin} points!`
       room.updatedAt = Date.now()
-      io.to(roomId).emit('state', publicState(room))
+      emitRoomStateOnce(room)
       io.emit('lobby', lobbySummary())
       return
     }
@@ -610,7 +609,7 @@ io.on('connection', (socket) => {
             .join(', ')} (score ${winners[0].score}).`
         }
         room.updatedAt = Date.now()
-        io.to(roomId).emit('state', publicState(room))
+        emitRoomStateOnce(room)
         io.emit('lobby', lobbySummary())
         return
       }
@@ -625,7 +624,7 @@ io.on('connection', (socket) => {
               winners[0].score
             }).`
       room.updatedAt = Date.now()
-      io.to(roomId).emit('state', publicState(room))
+      emitRoomStateOnce(room)
       io.emit('lobby', lobbySummary())
       return
     }
@@ -633,7 +632,7 @@ io.on('connection', (socket) => {
     // next turn
     room.turn = (room.turn + 1) % room.players.length
     room.updatedAt = Date.now()
-    io.to(roomId).emit('state', publicState(room))
+    emitRoomStateOnce(room)
   })
 
   socket.on('moveBlocker', ({ roomId, from, to }) => {
@@ -658,7 +657,7 @@ io.on('connection', (socket) => {
 
     room.turn = (room.turn + 1) % room.players.length
     room.updatedAt = Date.now()
-    io.to(roomId).emit('state', publicState(room))
+    emitRoomStateOnce(room)
   })
 
   // Chat (basic sanitization on client)
@@ -677,7 +676,7 @@ io.on('connection', (socket) => {
 
   socket.on('requestState', ({ roomId }) => {
     const room = rooms.get(roomId)
-    if (room) socket.emit('state', publicState(room))
+    if (room) io.to(socket.id).emit('state', publicState(room))
   })
 
   socket.on('disconnect', () => {
@@ -685,18 +684,26 @@ io.on('connection', (socket) => {
     const room = rooms.get(joinedRoomId)
     if (!room) return
 
-    // players: keep seat & name (so reconnect can “reclaim”) — but mark socketId null
+    // players: remove completely on disconnect (so room can dismantle when empty)
     const pIdx = room.players.findIndex((p) => p.socketId === socket.id)
     if (pIdx >= 0) {
-      const name = room.players[pIdx].name
-      room.players[pIdx] = { socketId: null, name }
+      room.players.splice(pIdx, 1)
+      room.scores.splice(pIdx, 1)
+      room.stock.splice(pIdx, 1)
     }
     // spectators: remove
     const sIdx = room.spectators.findIndex((s) => s.socketId === socket.id)
     if (sIdx >= 0) room.spectators.splice(sIdx, 1)
 
+    // Dismantle if no players remain
+    if (room.players.length === 0) {
+      rooms.delete(joinedRoomId)
+      io.emit('lobby', lobbySummary())
+      return
+    }
+
     room.updatedAt = Date.now()
-    io.to(joinedRoomId).emit('state', publicState(room))
+    emitRoomStateOnce(room)
     io.emit('lobby', lobbySummary())
   })
 })
