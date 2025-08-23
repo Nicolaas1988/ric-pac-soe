@@ -17,6 +17,7 @@
     --p2: #ef4444;
     --p3: #10b981;
     --p4: #f59e0b;
+    --hl: rgba(255,255,255,0.2);
   }
   * {
     box-sizing: border-box;
@@ -242,8 +243,8 @@
     z-index: 9999;
     display: none;
   }
-  /* modal */
-  #modalOverlay {
+  /* modal (generic) */
+  #modalOverlay, #rulesOverlay {
     position: fixed;
     inset: 0;
     background: rgba(0, 0, 0, 0.6);
@@ -252,15 +253,14 @@
     justify-content: center;
     z-index: 10000;
   }
-  #modal {
+  #modal, #rulesModal {
     background: #0f1422;
     color: #e6edf3;
     padding: 24px;
     border-radius: 12px;
     border: 1px solid var(--border);
     width: 90%;
-    max-width: 420px;
-    text-align: center;
+    max-width: 520px;
   }
   #chatBox {
     height: 220px;
@@ -281,6 +281,22 @@
     color: #94a3b8;
   }
 
+  /* highlight flash */
+  .cell.hl::after {
+    content: '';
+    position: absolute;
+    inset: 0;
+    border-radius: 8px;
+    animation: flash 800ms ease-out forwards;
+  }
+  @keyframes flash {
+    0% { box-shadow: 0 0 0 0 var(--hl); background: rgba(255,255,255,0.08); }
+    100% { box-shadow: 0 0 0 8px rgba(0,0,0,0); background: transparent; }
+  }
+
+  /* hidden helper */
+  .hidden { display: none !important; }
+
   /* ===== Responsive fixes ===== */
   @media (max-width: 1200px) {
     body {
@@ -294,7 +310,7 @@
   @media (max-width: 900px) {
     body {
       grid-template-columns: 1fr;
-      grid-template-areas:
+    grid-template-areas:
         'header'
         'board'
         'sidebar'
@@ -334,7 +350,9 @@
   <body>
     <header>
       <h1>Ric Pac Soe — Online</h1>
-      <div class="row">
+
+      <!-- Header Lobby Controls (will hide during gameplay) -->
+      <div id="lobbyHeaderRow" class="row">
         <input id="roomIdInput" type="text" placeholder="Room ID" />
         <input id="nameInput" type="text" placeholder="Your name" />
         <label class="row"
@@ -346,17 +364,19 @@
           Copy Invite
         </button>
       </div>
-      <div class="legend">
-        <span><b>Symbols:</b></span>
-        <span>◯ Rock</span>
-        <span>■ Paper</span>
-        <span>✕ Scissors</span>
-        <span>▦ Blocker</span>
-      </div>
+
+      <div class="grow"></div>
+
+      <!-- Game Rules (header link) and Leave Game -->
+      <span id="rulesLink" class="linklike">Game rules</span>
+      <button id="leaveBtn" class="btn-danger hidden" title="Leave this game">
+        Leave Game
+      </button>
     </header>
 
     <aside class="sidebar">
-      <div class="card">
+      <!-- Pre-game settings card (hidden after game started) -->
+      <div id="pregameCard" class="card">
         <div class="row" style="justify-content: space-between; gap: 14px">
           <div>
             <label>Players in room</label><br />
@@ -406,6 +426,7 @@
         </div>
       </div>
 
+      <!-- In-game controls + scoreboard -->
       <div class="card">
         <div class="row" style="justify-content: space-between">
           <div>
@@ -450,7 +471,8 @@
     </main>
 
     <aside class="right">
-      <div class="card">
+      <!-- Lobby list (hidden after game started) -->
+      <div id="lobbyCard" class="card">
         <div class="row" style="justify-content: space-between">
           <div style="font-weight: 700">Lobby</div>
           <button id="refreshLobbyBtn">Refresh</button>
@@ -481,6 +503,7 @@
 
     <div id="cursorGhost">◯</div>
 
+    <!-- Generic message modal -->
     <div id="modalOverlay" role="dialog" aria-modal="true">
       <div id="modal">
         <div
@@ -491,10 +514,33 @@
       </div>
     </div>
 
+    <!-- Rules modal -->
+    <div id="rulesOverlay" role="dialog" aria-modal="true">
+      <div id="rulesModal">
+        <div style="display:flex;justify-content:space-between;align-items:center;gap:8px;">
+          <h2 style="margin:0">Game Rules</h2>
+          <button id="rulesClose">Close</button>
+        </div>
+        <ol style="margin-top:12px;line-height:1.6">
+          <li>Players take turns placing one tile (◯ Rock, ■ Paper, ✕ Scissors) on any empty cell.</li>
+          <li>Blockers (▦) are obstacles. On your turn you may move a blocker one step instead of placing a tile.</li>
+          <li><strong>Eliminations:</strong> Placing a tile can eliminate adjacent enemy tiles if your symbol beats theirs (R&gt;S, S&gt;P, P&gt;R). Each eliminated tile = +1 point.</li>
+          <li><strong>Triples (your own):</strong> If your placement creates a contiguous 3-in-a-row of your <em>own identical symbol</em> (horizontal, vertical, diagonal), you gain +1 point per direction formed.</li>
+          <li><strong>Misplacement:</strong> If your placement creates a contiguous triple that includes your tile where the other two tiles are the <em>same opponent</em> and are a <em>stronger symbol</em> against your tile, that opponent gains +1 point for that line. Mixed ownership yields no score.</li>
+          <li><strong>Win:</strong> First to the target points wins. Game can also end when tiles are exhausted or the board is full; highest score wins.</li>
+        </ol>
+        <div style="margin-top:12px">
+          <div class="muted">Example illustrations (replace with your assets):</div>
+          <img src="example-3-in-row.png" alt="Three in a row example" style="max-width:100%;margin-top:8px;display:block;opacity:.85">
+          <img src="example-misplacement.png" alt="Misplacement example" style="max-width:100%;margin-top:8px;display:block;opacity:.85">
+        </div>
+      </div>
+    </div>
+
     <script src="https://cdn.socket.io/4.8.1/socket.io.min.js"></script>
     <script>
       const socket = io('https://ric-pac-soe.onrender.com', {
-        transports: ['websocket'], // optional
+        transports: ['websocket'],
         withCredentials: true,
         secure: true,
       })
@@ -534,13 +580,26 @@
         if (!STATE) return
         renderBoard()
         renderSidebar()
+        renderRightSidebar()
         renderChat()
+        toggleLobbyVsGame()
         if (STATE.gameOver && STATE.message) showModal(STATE.message)
       }
 
       function renderBoard() {
         const board = document.getElementById('board')
         board.innerHTML = ''
+        // Build a set of highlight cells for quick lookup
+        const hlSet = new Set()
+        const hlGroups = Array.isArray(STATE.highlights) ? STATE.highlights : []
+        // We’ll also color the flash by scorer color (approx) using inline CSS var
+        // In this client we don’t know who scored per-group, so we just flash neutral.
+        for (const group of hlGroups) {
+          for (const cell of group) {
+            hlSet.add(`${cell.r},${cell.c}`)
+          }
+        }
+
         for (let r = 0; r < 8; r++) {
           for (let c = 0; c < 8; c++) {
             const cell = document.createElement('div')
@@ -564,9 +623,20 @@
               span.style.color = playerColor(v.player)
               cell.appendChild(span)
             }
+            if (hlSet.has(`${r},${c}`)) {
+              cell.classList.add('hl')
+            }
             cell.addEventListener('click', onCellClick)
             board.appendChild(cell)
           }
+        }
+
+        // clear highlights shortly after render to allow next moves to reflash
+        if (hlGroups.length > 0) {
+          setTimeout(() => {
+            // Request a fresh state so highlights are cleared from view after flash
+            socket.emit('requestState', { roomId: ROOM_ID })
+          }, 900)
         }
       }
 
@@ -619,6 +689,18 @@
         document.getElementById('roomLabel').textContent = `Room: ${
           ROOM_ID || '—'
         }`
+      }
+
+      function renderRightSidebar() {
+        // nothing extra for now
+      }
+
+      function toggleLobbyVsGame() {
+        const playing = !!STATE.started
+        document.getElementById('lobbyHeaderRow').classList.toggle('hidden', playing)
+        document.getElementById('pregameCard').classList.toggle('hidden', playing)
+        document.getElementById('lobbyCard').classList.toggle('hidden', playing)
+        document.getElementById('leaveBtn').classList.toggle('hidden', !playing)
       }
 
       // ====== Interaction ======
@@ -726,6 +808,16 @@
         modalOverlay.style.display = 'flex'
       }
 
+      // Rules Modal
+      const rulesOverlay = document.getElementById('rulesOverlay')
+      document.getElementById('rulesLink').onclick = () =>
+        (rulesOverlay.style.display = 'flex')
+      document.getElementById('rulesClose').onclick = () =>
+        (rulesOverlay.style.display = 'none')
+      rulesOverlay.addEventListener('click', (e) => {
+        if (e.target === rulesOverlay) rulesOverlay.style.display = 'none'
+      })
+
       // ===== Lobby =====
       const lobbyListEl = document.getElementById('lobbyList')
       function renderLobby(list) {
@@ -799,6 +891,19 @@
             setStatus('Could not copy link.')
           }
         })
+
+      document.getElementById('leaveBtn').addEventListener('click', () => {
+        if (!ROOM_ID) return
+        socket.emit('leaveRoom', { roomId: ROOM_ID })
+        // Reset local UI state
+        ROOM_ID = null
+        ME = { role: null, index: null }
+        selectedSymbol = null
+        hideCursorGhost()
+        document.getElementById('copyInviteBtn').disabled = true
+        document.getElementById('roomLabel').textContent = 'Room: —'
+        setStatus('Left the game. You can join or create a room.')
+      })
 
       document.getElementById('newGameBtn').addEventListener('click', () => {
         if (!ROOM_ID) {
